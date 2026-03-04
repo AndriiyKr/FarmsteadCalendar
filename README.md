@@ -101,7 +101,3 @@ https://github.com/AndriiyKr/FarmsteadCalendar
 Дошка проєкту (GitHub Projects):  
 https://github.com/users/AndriiyKr/projects/2  
 
-
-## 📄 Ліцензія
-
-Проєкт створений у навчальних цілях.
