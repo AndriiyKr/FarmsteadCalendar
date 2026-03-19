@@ -101,3 +101,6 @@ https://github.com/AndriiyKr/FarmsteadCalendar
 Дошка проєкту (GitHub Projects):  
 https://github.com/users/AndriiyKr/projects/2  
 
+Посилання на mockup:
+[figma.com](https://www.figma.com/design/UTIQ3FBCp3E3L4xF89c7S9/Farmstead-Calendar?node-id=0-1&t=VIBYRVxiL3k4gOja-1)
+
