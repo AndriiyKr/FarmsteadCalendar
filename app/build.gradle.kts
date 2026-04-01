@@ -28,21 +28,25 @@ android {
         }
     }
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+    kotlinOptions {
+        jvmTarget = "17"
     }
 }
 
 dependencies {
+    val room_version = "2.6.1"
 
     // ROOM
-    implementation("androidx.room:room-runtime:2.6.1")
-    //kapt("androidx.room:room-compiler:2.6.1")
+    implementation("androidx.room:room-runtime:$room_version")
 
-    // CORE
+    // ЗАМІСТЬ annotationProcessor ПИШЕМО kapt:
+    kapt("androidx.room:room-compiler:$room_version")
+
+    // Решта твоїх залежностей...
     implementation("androidx.core:core-ktx:1.13.1")
-
-    // UI
     implementation("androidx.appcompat:appcompat:1.6.1")
     implementation("com.google.android.material:material:1.11.0")
 
