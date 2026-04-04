@@ -6,13 +6,18 @@ import android.view.View;
 import android.widget.Button;
 import android.widget.Toast;
 
+import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 
 import com.applandeo.materialcalendarview.CalendarView;
 import com.applandeo.materialcalendarview.EventDay;
 import com.example.farmsteadcalendar.R;
 import com.example.farmsteadcalendar.dal.database.DictionaryDatabase;
+import com.example.farmsteadcalendar.dal.database.UserDatabase;
 import com.example.farmsteadcalendar.dal.entities.Flower;
+import com.example.farmsteadcalendar.dal.entities.Tree;
+import com.example.farmsteadcalendar.dal.entities.UserPlant;
+import com.example.farmsteadcalendar.dal.entities.Vegetable;
 import com.google.android.material.appbar.MaterialToolbar;
 import com.google.android.material.bottomsheet.BottomSheetDialog;
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
@@ -26,12 +31,14 @@ public class MainActivity extends AppCompatActivity {
     private CalendarView calendarView;
     private FloatingActionButton fabAdd;
     private MaterialToolbar topAppBar;
-    private DictionaryDatabase db;
+
+    // Дві наші бази даних
+    private DictionaryDatabase db;       // Довідник (Read-only)
+    private UserDatabase userDb;         // База користувача (Читання/Запис)
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        // Обов'язково вказуємо наш новий дизайн
         setContentView(R.layout.activity_main);
 
         // Знаходимо елементи на екрані
@@ -41,6 +48,7 @@ public class MainActivity extends AppCompatActivity {
 
         // Ініціалізація БД
         db = DictionaryDatabase.getInstance(this);
+        userDb = UserDatabase.getInstance(this);
 
         // Обробка кнопок у верхньому хедері (Про додаток / Налаштування)
         topAppBar.setOnMenuItemClickListener(item -> {
@@ -68,7 +76,6 @@ public class MainActivity extends AppCompatActivity {
             intent.putExtra("SELECTED_DATE", eventDay.getCalendar().getTimeInMillis());
             startActivity(intent);
         });
-
     }
 
     private void showBottomSheetMenu() {
@@ -81,19 +88,96 @@ public class MainActivity extends AppCompatActivity {
         Button btnVegetables = view.findViewById(R.id.btnVegetables);
         Button btnNote = view.findViewById(R.id.btnNote);
 
+        // Прив'язуємо кнопки до виклику діалогу з відповідною категорією
         if (btnFlowers != null) {
             btnFlowers.setOnClickListener(v -> {
-                Toast.makeText(this, "Відкриваємо список квітів", Toast.LENGTH_SHORT).show();
+                showPlantSelectionDialog("flowers");
                 bottomSheetDialog.dismiss();
             });
         }
 
-        // Інші кнопки також можна налаштувати тут
-        if (btnNote != null) btnNote.setOnClickListener(v -> bottomSheetDialog.dismiss());
-        if (btnTrees != null) btnTrees.setOnClickListener(v -> bottomSheetDialog.dismiss());
-        if (btnVegetables != null) btnVegetables.setOnClickListener(v -> bottomSheetDialog.dismiss());
+        if (btnTrees != null) {
+            btnTrees.setOnClickListener(v -> {
+                showPlantSelectionDialog("trees");
+                bottomSheetDialog.dismiss();
+            });
+        }
+
+        if (btnVegetables != null) {
+            btnVegetables.setOnClickListener(v -> {
+                showPlantSelectionDialog("vegetables");
+                bottomSheetDialog.dismiss();
+            });
+        }
+
+        if (btnNote != null) {
+            btnNote.setOnClickListener(v -> {
+                Toast.makeText(this, "Додавання нотаток в розробці", Toast.LENGTH_SHORT).show();
+                bottomSheetDialog.dismiss();
+            });
+        }
 
         bottomSheetDialog.show();
+    }
+
+    // Метод, який витягує список назв рослин з Довідника і показує діалог вибору
+    private void showPlantSelectionDialog(String category) {
+        new Thread(() -> {
+            List<String> names = new ArrayList<>();
+            List<Integer> ids = new ArrayList<>();
+
+            try {
+                // Завантажуємо дані залежно від категорії
+                if (category.equals("flowers")) {
+                    List<Flower> list = db.dictionaryDao().getAllFlowers();
+                    for (Flower f : list) { names.add(f.name); ids.add(f.id); }
+                } else if (category.equals("trees")) {
+                    List<Tree> list = db.dictionaryDao().getAllTrees();
+                    for (Tree t : list) { names.add(t.name); ids.add(t.id); }
+                } else if (category.equals("vegetables")) {
+                    List<Vegetable> list = db.dictionaryDao().getAllVegetables();
+                    for (Vegetable v : list) { names.add(v.name); ids.add(v.id); }
+                }
+
+                // Показуємо список у головному потоці
+                runOnUiThread(() -> {
+                    if (names.isEmpty()) {
+                        Toast.makeText(this, "Список порожній", Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+
+                    new AlertDialog.Builder(this)
+                            .setTitle("Оберіть рослину")
+                            .setItems(names.toArray(new String[0]), (dialog, which) -> {
+                                // Коли користувач обрав рослину — зберігаємо її ID та категорію в його БД
+                                savePlantToUserList(ids.get(which), category, names.get(which));
+                            })
+                            .show();
+                });
+            } catch (Exception e) {
+                Log.e("DIALOG_ERROR", "Помилка завантаження списку: " + e.getMessage());
+            }
+        }).start();
+    }
+
+    // Збереження вибору в таблицю user_plants
+    private void savePlantToUserList(int plantId, String category, String plantName) {
+        new Thread(() -> {
+            try {
+                UserPlant up = new UserPlant();
+                up.plant_id = plantId;
+                up.category = category;
+
+                // Записуємо в базу користувача
+                userDb.userDao().addUserPlant(up);
+
+                runOnUiThread(() -> {
+                    Toast.makeText(this, plantName + " додано до вашого списку!", Toast.LENGTH_SHORT).show();
+                });
+            } catch (Exception e) {
+                Log.e("SAVE_ERROR", "Помилка збереження рослини: " + e.getMessage());
+            }
+        }).start();
     }
 
     private void loadCalendarData() {
@@ -117,8 +201,6 @@ public class MainActivity extends AppCompatActivity {
 
                         Calendar eventDate = parseDateForYear(f.planting_start, currentYear);
                         if (eventDate != null) {
-                            // Додаємо подію з іконкою крапки
-                            // Переконайтеся, що файл R.drawable.dot_marker_flowers існує
                             events.add(new EventDay(eventDate, R.drawable.dot_marker_flowers));
                         }
                     }
