@@ -60,6 +60,15 @@ public class MainActivity extends AppCompatActivity {
 
         // Запуск перевірки БД та завантаження подій у календар
         loadCalendarData();
+
+        // Обробка кліку по дню на календарі
+        calendarView.setOnDayClickListener(eventDay -> {
+            android.content.Intent intent = new android.content.Intent(MainActivity.this, DayDetailActivity.class);
+            // Передаємо дату в мілісекундах
+            intent.putExtra("SELECTED_DATE", eventDay.getCalendar().getTimeInMillis());
+            startActivity(intent);
+        });
+
     }
 
     private void showBottomSheetMenu() {

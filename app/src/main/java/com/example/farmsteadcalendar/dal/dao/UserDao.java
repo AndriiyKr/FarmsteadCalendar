@@ -16,4 +16,7 @@ public interface UserDao {
 
     @Query("SELECT * FROM user_plants")
     List<UserPlant> getMyPlants();
+
+    @Query("SELECT * FROM notes WHERE date = :dateStr")
+    List<Note> getNotesByDate(String dateStr);
 }
