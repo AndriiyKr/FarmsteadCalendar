@@ -16,6 +16,8 @@ public interface DictionaryDao {
     @Query("SELECT * FROM vegetables")
     List<Vegetable> getAllVegetables();
 
+    // app/src/main/java/com/example/farmsteadcalendar/dal/dao/DictionaryDao.java
+
     @Query("SELECT * FROM flowers WHERE id = :id")
     Flower getFlowerById(int id);
 

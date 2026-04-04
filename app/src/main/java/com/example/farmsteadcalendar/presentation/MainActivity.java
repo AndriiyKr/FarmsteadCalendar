@@ -66,7 +66,7 @@ public class MainActivity extends AppCompatActivity {
         // Кнопка "+" внизу екрану
         fabAdd.setOnClickListener(v -> showBottomSheetMenu());
 
-        // Запуск перевірки БД та завантаження подій у календар
+        // Запуск завантаження подій у календар
         loadCalendarData();
 
         // Обробка кліку по дню на календарі
@@ -76,6 +76,13 @@ public class MainActivity extends AppCompatActivity {
             intent.putExtra("SELECTED_DATE", eventDay.getCalendar().getTimeInMillis());
             startActivity(intent);
         });
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        // Оновлюємо крапки на календарі щоразу, коли повертаємось на головний екран
+        loadCalendarData();
     }
 
     private void showBottomSheetMenu() {
@@ -173,6 +180,8 @@ public class MainActivity extends AppCompatActivity {
 
                 runOnUiThread(() -> {
                     Toast.makeText(this, plantName + " додано до вашого списку!", Toast.LENGTH_SHORT).show();
+                    // ОНОВЛЮЄМО КАЛЕНДАР ОДРАЗУ ПІСЛЯ ДОДАВАННЯ РОСЛИНИ
+                    loadCalendarData();
                 });
             } catch (Exception e) {
                 Log.e("SAVE_ERROR", "Помилка збереження рослини: " + e.getMessage());
@@ -181,60 +190,85 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void loadCalendarData() {
-        // Перевірка DAL рівня та завантаження даних в окремому потоці
         new Thread(() -> {
             try {
-                Log.d("DAL_CHECK", "Спроба підключення до БД...");
-                List<Flower> flowers = db.dictionaryDao().getAllFlowers();
                 List<EventDay> events = new ArrayList<>();
-
                 int currentYear = Calendar.getInstance().get(Calendar.YEAR);
 
-                if (flowers.isEmpty()) {
-                    Log.d("DAL_CHECK", "БАЗА ЗНАЙДЕНА, АЛЕ ТАБЛИЦЯ flowers ПОРОЖНЯ!");
-                } else {
-                    Log.d("DAL_CHECK", "УСПІХ! Знайдено квітів: " + flowers.size());
+                List<UserPlant> myPlants = userDb.userDao().getMyPlants();
 
-                    // Проходимось по кожній квітці і створюємо для неї крапку
-                    for (Flower f : flowers) {
-                        Log.d("DAL_CHECK", "Квітка: " + f.name + " | Посадка: " + f.planting_start);
-
-                        Calendar eventDate = parseDateForYear(f.planting_start, currentYear);
-                        if (eventDate != null) {
-                            events.add(new EventDay(eventDate, R.drawable.dot_marker_flowers));
+                for (UserPlant up : myPlants) {
+                    if ("flowers".equals(up.category)) {
+                        Flower f = db.dictionaryDao().getFlowerById(up.plant_id);
+                        if (f != null) {
+                            addEventPeriod(events, f.planting_start, f.planting_end, currentYear, R.drawable.dot_planting);
+                        }
+                    } else if ("trees".equals(up.category)) {
+                        Tree t = db.dictionaryDao().getTreeById(up.plant_id);
+                        if (t != null) {
+                            addEventPeriod(events, t.planting_start, t.planting_end, currentYear, R.drawable.dot_planting);
+                            addEventPeriod(events, t.pruning_start, t.pruning_end, currentYear, R.drawable.dot_pruning);
+                            addEventPeriod(events, t.blooming_start, t.blooming_end, currentYear, R.drawable.dot_blooming);
+                            addEventPeriod(events, t.ripening_start, t.ripening_end, currentYear, R.drawable.dot_ripening);
+                            addEventPeriod(events, t.fertilizing_start, t.fertilizing_end, currentYear, R.drawable.dot_fertilizing);
+                        }
+                    } else if ("vegetables".equals(up.category)) {
+                        Vegetable v = db.dictionaryDao().getVegetableById(up.plant_id);
+                        if (v != null) {
+                            addEventPeriod(events, v.planting_start, v.planting_end, currentYear, R.drawable.dot_planting);
+                            addEventPeriod(events, v.maturity_start, v.maturity_end, currentYear, R.drawable.dot_ripening);
+                            addEventPeriod(events, v.fertilizing_start, v.fertilizing_end, currentYear, R.drawable.dot_fertilizing);
                         }
                     }
                 }
 
-                // Оновлюємо UI (календар) у головному потоці
                 runOnUiThread(() -> {
                     calendarView.setEvents(events);
-                    Log.d("CALENDAR", "Крапки успішно додано на календар");
                 });
 
             } catch (Exception e) {
-                Log.e("DAL_CHECK", "КРИТИЧНА ПОМИЛКА: " + e.getMessage());
-                e.printStackTrace();
+                Log.e("CALENDAR_LOAD", "Помилка: " + e.getMessage());
             }
         }).start();
     }
 
-    // Метод для перетворення тексту з БД ("15.04") у формат Calendar
-    private Calendar parseDateForYear(String dateText, int year) {
-        if (dateText == null || dateText.isEmpty()) return null;
-        try {
-            String[] parts = dateText.split("[.\\-]");
-            if (parts.length >= 2) {
-                int day = Integer.parseInt(parts[0].trim());
-                int month = Integer.parseInt(parts[1].trim()) - 1; // У Java місяці починаються з 0
+    // Заповнює крапками кожен день між початком і кінцем періоду
+    private void addEventPeriod(List<EventDay> events, String startStr, String endStr, int year, int iconRes) {
+        if (startStr == null || startStr.trim().isEmpty() || endStr == null || endStr.trim().isEmpty()) return;
 
-                Calendar calendar = Calendar.getInstance();
-                calendar.set(year, month, day, 0, 0, 0);
-                calendar.set(Calendar.MILLISECOND, 0);
-                return calendar;
+        Calendar startCal = parseMonthDay(startStr.trim(), year);
+        Calendar endCal = parseMonthDay(endStr.trim(), year);
+
+        if (startCal != null && endCal != null) {
+            // Якщо період переходить на наступний рік (наприклад, з листопада по лютий)
+            if (endCal.before(startCal)) {
+                endCal.add(Calendar.YEAR, 1);
+            }
+
+            Calendar current = (Calendar) startCal.clone();
+            // Цикл: додаємо крапку, поки поточний день не стане більшим за кінцевий
+            while (!current.after(endCal)) {
+                events.add(new EventDay((Calendar) current.clone(), iconRes));
+                current.add(Calendar.DAY_OF_MONTH, 1);
+            }
+        }
+    }
+
+    // Парсер для формату "09-30" (місяць-день)
+    private Calendar parseMonthDay(String dateText, int year) {
+        try {
+            String[] parts = dateText.split("-");
+            if (parts.length == 2) {
+                int month = Integer.parseInt(parts[0].trim()) - 1; // У Java місяці 0-11
+                int day = Integer.parseInt(parts[1].trim());
+
+                Calendar cal = Calendar.getInstance();
+                cal.set(year, month, day, 0, 0, 0);
+                cal.set(Calendar.MILLISECOND, 0);
+                return cal;
             }
         } catch (Exception e) {
-            Log.e("PARSE_ERROR", "Не вдалося розпарсити дату: " + dateText);
+            Log.e("PARSE_ERROR", "Не вдалося розпарсити: " + dateText);
         }
         return null;
     }

@@ -19,4 +19,7 @@ public interface UserDao {
 
     @Query("SELECT * FROM notes WHERE date = :dateStr")
     List<Note> getNotesByDate(String dateStr);
+
+    @Query("DELETE FROM user_plants WHERE plant_id = :plantId AND category = :category")
+    void deleteUserPlant(int plantId, String category);
 }
