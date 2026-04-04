@@ -45,6 +45,8 @@ dependencies {
     // ЗАМІСТЬ annotationProcessor ПИШЕМО kapt:
     kapt("androidx.room:room-compiler:$room_version")
 
+    implementation("com.applandeo:material-calendar-view:1.9.0")
+    implementation("com.google.android.material:material:1.11.0") // Також переконайтеся, що ця бібліотека підключена
     // Решта твоїх залежностей...
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.appcompat:appcompat:1.6.1")
