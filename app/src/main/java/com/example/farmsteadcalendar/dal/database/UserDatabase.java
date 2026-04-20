@@ -7,7 +7,7 @@ import androidx.room.RoomDatabase;
 import com.example.farmsteadcalendar.dal.entities.*;
 import com.example.farmsteadcalendar.dal.dao.UserDao;
 
-@Database(entities = {Note.class, UserPlant.class}, version = 1)
+@Database(entities = {Note.class, UserPlant.class}, version = 3)
 public abstract class UserDatabase extends RoomDatabase {
 
     private static UserDatabase instance;

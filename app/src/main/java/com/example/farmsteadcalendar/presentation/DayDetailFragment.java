@@ -149,11 +149,7 @@ public class DayDetailFragment extends Fragment {
                     containerNotes.removeAllViews();
                     if (dailyNotes != null && !dailyNotes.isEmpty()) {
                         for (Note note : dailyNotes) {
-                            TextView tvN = new TextView(getContext());
-                            tvN.setText("• " + note.content);
-                            tvN.setTextSize(16f);
-                            tvN.setPadding(0, 0, 0, 16);
-                            containerNotes.addView(tvN);
+                            containerNotes.addView(createNoteView(note));
                         }
                     } else {
                         TextView emptyN = new TextView(getContext());
@@ -181,6 +177,49 @@ public class DayDetailFragment extends Fragment {
         }
         tasks.add(new PlantTask(name, action, id, category));
     }
+
+    // Створення красивого блоку з кнопкою Видалити для нотатки
+    private View createNoteView(Note note) {
+        LinearLayout row = new LinearLayout(getContext());
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        row.setPadding(16, 12, 16, 12);
+        row.setGravity(android.view.Gravity.CENTER_VERTICAL);
+
+        String colorHex = note.colorHex != null ? note.colorHex : "#F5F5F5";
+        row.setBackgroundColor(Color.parseColor(colorHex));
+
+        LinearLayout.LayoutParams rowParams = (LinearLayout.LayoutParams) row.getLayoutParams();
+        rowParams.bottomMargin = 8;
+        row.setLayoutParams(rowParams);
+
+        TextView tvContent = new TextView(getContext());
+        tvContent.setText(note.content != null ? note.content : "");
+        tvContent.setTextSize(14f);
+        tvContent.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f));
+        tvContent.setTextColor(getReadableTextColor(colorHex));
+
+        row.setOnClickListener(v -> {
+            if (getActivity() instanceof DayDetailActivity) {
+                DayDetailActivity activity = (DayDetailActivity) getActivity();
+                activity.openNoteEditor(note);
+            }
+        });
+
+        row.addView(tvContent);
+        return row;
+    }
+
+    private int getReadableTextColor(String backgroundColorHex) {
+        try {
+            int bg = Color.parseColor(backgroundColorHex);
+            double luminance = (0.299 * Color.red(bg) + 0.587 * Color.green(bg) + 0.114 * Color.blue(bg));
+            return luminance < 160 ? Color.WHITE : Color.parseColor("#212121");
+        } catch (Exception e) {
+            return Color.parseColor("#212121");
+        }
+    }
+
 
     // Створення красивого блоку з кнопкою Видалити
     private View createPlantView(PlantTask task) {
