@@ -3,6 +3,14 @@
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
 
-    <color name="colorPrimary">#4CAF50</color>    <color name="colorPrimaryDark">#388E3C</color>
-    <color name="colorAccent">#D4E157</color>      <color name="colorText">#212121</color>
+    <color name="colorPrimary">#4CAF50</color>
+    <color name="colorPrimaryDark">#388E3C</color>
+    <color name="colorAccent">#D4E157</color>
+    <color name="colorText">#212121</color>
+
+    <!-- Dialog Colors -->
+    <color name="dialogBackground">#F1F5F1</color>
+    <color name="dialogButtonText">#4CAF50</color>
+    <color name="dialogTitleText">#2E7D32</color>
+    <color name="dialogTextColor">#424242</color>
 </resources>

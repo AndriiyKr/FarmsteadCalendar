@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Material Dialog Customizations -->
+    <style name="MaterialAlertDialog" parent="ThemeOverlay.MaterialComponents.MaterialAlertDialog">
+        <item name="colorPrimary">@color/colorPrimary</item>
+        <item name="colorOnSurface">@color/dialogTextColor</item>
+        <item name="colorOnSecondaryContainer">@color/colorText</item>
+    </style>
+
+    <!-- Custom Text Style for Dialog Items -->
+    <style name="DialogItemText">
+        <item name="android:textColor">@color/dialogTextColor</item>
+        <item name="android:textSize">16sp</item>
+        <item name="android:padding">12dp</item>
+    </style>
+</resources>
+

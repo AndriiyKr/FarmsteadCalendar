@@ -55,7 +55,7 @@
             android:layout_marginEnd="8dp"
             android:text=""
             app:cornerRadius="20dp"
-            app:backgroundTint="#FF5722"
+            app:backgroundTint="#455A64"
             app:strokeWidth="0dp" />
 
         <com.google.android.material.button.MaterialButton
@@ -65,7 +65,7 @@
             android:layout_marginEnd="8dp"
             android:text=""
             app:cornerRadius="20dp"
-            app:backgroundTint="#1E88E5"
+            app:backgroundTint="#6D4C41"
             app:strokeWidth="0dp" />
 
         <com.google.android.material.button.MaterialButton
@@ -75,7 +75,7 @@
             android:layout_marginEnd="8dp"
             android:text=""
             app:cornerRadius="20dp"
-            app:backgroundTint="#43A047"
+            app:backgroundTint="#00838F"
             app:strokeWidth="0dp" />
 
         <com.google.android.material.button.MaterialButton
@@ -85,7 +85,7 @@
             android:layout_marginEnd="8dp"
             android:text=""
             app:cornerRadius="20dp"
-            app:backgroundTint="#FFB300"
+            app:backgroundTint="#3949AB"
             app:strokeWidth="0dp" />
 
         <com.google.android.material.button.MaterialButton
@@ -95,19 +95,10 @@
             android:layout_marginEnd="8dp"
             android:text=""
             app:cornerRadius="20dp"
-            app:backgroundTint="#AB47BC"
+            app:backgroundTint="#5D4037"
             app:strokeWidth="0dp" />
 
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnColorCustom"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
-            android:text="+"
-            android:textSize="18sp"
-            android:textColor="#FFFFFF"
-            app:cornerRadius="20dp"
-            app:backgroundTint="#9E9E9E"
-            app:strokeWidth="0dp" />
+
     </LinearLayout>
 
     <!-- Start Date -->

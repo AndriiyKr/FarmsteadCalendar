@@ -145,6 +145,7 @@ public class DayDetailFragment extends Fragment {
                         containerPlants.addView(emptyP);
                     }
 
+
                     // Відмальовуємо нотатки
                     containerNotes.removeAllViews();
                     if (dailyNotes != null && !dailyNotes.isEmpty()) {
@@ -177,6 +178,7 @@ public class DayDetailFragment extends Fragment {
         }
         tasks.add(new PlantTask(name, action, id, category));
     }
+
 
     // Створення красивого блоку з кнопкою Видалити для нотатки
     private View createNoteView(Note note) {
@@ -288,25 +290,40 @@ public class DayDetailFragment extends Fragment {
 
             int currentYear = date.get(Calendar.YEAR);
 
-            String[] sParts = startStr.split("-");
-            Calendar startCal = Calendar.getInstance();
-            startCal.set(currentYear, Integer.parseInt(sParts[0].trim()) - 1, Integer.parseInt(sParts[1].trim()), 0, 0, 0);
-            startCal.set(Calendar.MILLISECOND, 0);
+            // Support multiple comma-separated ranges in start/end fields.
+            String[] starts = startStr.split(",");
+            String[] ends = endStr.split(",");
+            int pairs = Math.min(starts.length, ends.length);
 
-            String[] eParts = endStr.split("-");
-            Calendar endCal = Calendar.getInstance();
-            endCal.set(currentYear, Integer.parseInt(eParts[0].trim()) - 1, Integer.parseInt(eParts[1].trim()), 0, 0, 0);
-            endCal.set(Calendar.MILLISECOND, 0);
+            for (int i = 0; i < pairs; i++) {
+                String s = starts[i].trim();
+                String e = ends[i].trim();
+                if (s.isEmpty() || e.isEmpty()) continue;
 
-            if (endCal.before(startCal)) {
-                if (date.get(Calendar.MONTH) <= endCal.get(Calendar.MONTH)) {
-                    startCal.add(Calendar.YEAR, -1);
-                } else {
-                    endCal.add(Calendar.YEAR, 1);
+                String[] sParts = s.split("-");
+                String[] eParts = e.split("-");
+                if (sParts.length < 2 || eParts.length < 2) continue;
+
+                Calendar startCal = Calendar.getInstance();
+                startCal.set(currentYear, Integer.parseInt(sParts[0].trim()) - 1, Integer.parseInt(sParts[1].trim()), 0, 0, 0);
+                startCal.set(Calendar.MILLISECOND, 0);
+
+                Calendar endCal = Calendar.getInstance();
+                endCal.set(currentYear, Integer.parseInt(eParts[0].trim()) - 1, Integer.parseInt(eParts[1].trim()), 0, 0, 0);
+                endCal.set(Calendar.MILLISECOND, 0);
+
+                if (endCal.before(startCal)) {
+                    if (date.get(Calendar.MONTH) <= endCal.get(Calendar.MONTH)) {
+                        startCal.add(Calendar.YEAR, -1);
+                    } else {
+                        endCal.add(Calendar.YEAR, 1);
+                    }
                 }
+
+                if (!date.before(startCal) && !date.after(endCal)) return true;
             }
 
-            return !date.before(startCal) && !date.after(endCal);
+            return false;
         } catch (Exception e) {
             return false;
         }

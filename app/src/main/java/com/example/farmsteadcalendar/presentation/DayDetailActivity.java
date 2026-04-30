@@ -164,51 +164,39 @@ public class DayDetailActivity extends AppCompatActivity {
         MaterialButton btnColor3 = view.findViewById(R.id.btnColor3);
         MaterialButton btnColor4 = view.findViewById(R.id.btnColor4);
         MaterialButton btnColor5 = view.findViewById(R.id.btnColor5);
-        MaterialButton btnColorCustom = view.findViewById(R.id.btnColorCustom);
 
         etContent.setText(note.content);
         btnStartDate.setText(note.startDate);
         btnEndDate.setText(note.endDate);
 
-        final String[] currentColor = {note.colorHex != null ? note.colorHex : "#FF5722"};
-        if (note.colorHex != null) {
-            try {
-                btnColorCustom.setBackgroundTintList(ColorStateList.valueOf(Color.parseColor(note.colorHex)));
-            } catch (Exception ignored) {
-                // Keep the default swatch color if the stored value is invalid.
-            }
-        }
-        highlightColorButton(currentColor[0], btnColor1, btnColor2, btnColor3, btnColor4, btnColor5, btnColorCustom);
+        final String[] currentColor = {note.colorHex != null ? note.colorHex : "#455A64"};
+
+        highlightColorButton(currentColor[0], btnColor1, btnColor2, btnColor3, btnColor4, btnColor5);
 
         final String[] currentStartDate = {note.startDate};
         final String[] currentEndDate = {note.endDate};
 
         btnColor1.setOnClickListener(v -> {
-            currentColor[0] = "#FF5722";
-            highlightColorButton(currentColor[0], btnColor1, btnColor2, btnColor3, btnColor4, btnColor5, btnColorCustom);
+            currentColor[0] = "#455A64";
+            highlightColorButton(currentColor[0], btnColor1, btnColor2, btnColor3, btnColor4, btnColor5);
         });
         btnColor2.setOnClickListener(v -> {
-            currentColor[0] = "#1E88E5";
-            highlightColorButton(currentColor[0], btnColor1, btnColor2, btnColor3, btnColor4, btnColor5, btnColorCustom);
+            currentColor[0] = "#6D4C41";
+            highlightColorButton(currentColor[0], btnColor1, btnColor2, btnColor3, btnColor4, btnColor5);
         });
         btnColor3.setOnClickListener(v -> {
-            currentColor[0] = "#43A047";
-            highlightColorButton(currentColor[0], btnColor1, btnColor2, btnColor3, btnColor4, btnColor5, btnColorCustom);
+            currentColor[0] = "#00838F";
+            highlightColorButton(currentColor[0], btnColor1, btnColor2, btnColor3, btnColor4, btnColor5);
         });
         btnColor4.setOnClickListener(v -> {
-            currentColor[0] = "#FFB300";
-            highlightColorButton(currentColor[0], btnColor1, btnColor2, btnColor3, btnColor4, btnColor5, btnColorCustom);
+            currentColor[0] = "#3949AB";
+            highlightColorButton(currentColor[0], btnColor1, btnColor2, btnColor3, btnColor4, btnColor5);
         });
         btnColor5.setOnClickListener(v -> {
-            currentColor[0] = "#AB47BC";
-            highlightColorButton(currentColor[0], btnColor1, btnColor2, btnColor3, btnColor4, btnColor5, btnColorCustom);
+            currentColor[0] = "#5D4037";
+            highlightColorButton(currentColor[0], btnColor1, btnColor2, btnColor3, btnColor4, btnColor5);
         });
 
-        btnColorCustom.setOnClickListener(v -> showColorPickerDialog(newColor -> {
-            currentColor[0] = newColor;
-            btnColorCustom.setBackgroundTintList(ColorStateList.valueOf(Color.parseColor(newColor)));
-            highlightColorButton(currentColor[0], btnColor1, btnColor2, btnColor3, btnColor4, btnColor5, btnColorCustom);
-        }));
 
         btnStartDate.setOnClickListener(v -> showDatePicker(date -> {
             currentStartDate[0] = date;
@@ -340,12 +328,11 @@ public class DayDetailActivity extends AppCompatActivity {
         MaterialButton btnColor3 = view.findViewById(R.id.btnColor3);
         MaterialButton btnColor4 = view.findViewById(R.id.btnColor4);
         MaterialButton btnColor5 = view.findViewById(R.id.btnColor5);
-        MaterialButton btnColorCustom = view.findViewById(R.id.btnColorCustom);
 
         btnDelete.setVisibility(View.GONE);
 
-        final String[] currentColor = {"#FF5722"};
-        highlightColorButton(currentColor[0], btnColor1, btnColor2, btnColor3, btnColor4, btnColor5, btnColorCustom);
+        final String[] currentColor = {"#455A64"};
+        highlightColorButton(currentColor[0], btnColor1, btnColor2, btnColor3, btnColor4, btnColor5);
 
         if (selectedDate == null) {
             Toast.makeText(this, "Не вдалося визначити дату", Toast.LENGTH_SHORT).show();
@@ -361,31 +348,26 @@ public class DayDetailActivity extends AppCompatActivity {
         final String[] currentEndDate = {dateStr};
 
         btnColor1.setOnClickListener(v -> {
-            currentColor[0] = "#FF5722";
-            highlightColorButton(currentColor[0], btnColor1, btnColor2, btnColor3, btnColor4, btnColor5, btnColorCustom);
+            currentColor[0] = "#455A64";
+            highlightColorButton(currentColor[0], btnColor1, btnColor2, btnColor3, btnColor4, btnColor5);
         });
         btnColor2.setOnClickListener(v -> {
-            currentColor[0] = "#1E88E5";
-            highlightColorButton(currentColor[0], btnColor1, btnColor2, btnColor3, btnColor4, btnColor5, btnColorCustom);
+            currentColor[0] = "#6D4C41";
+            highlightColorButton(currentColor[0], btnColor1, btnColor2, btnColor3, btnColor4, btnColor5);
         });
         btnColor3.setOnClickListener(v -> {
-            currentColor[0] = "#43A047";
-            highlightColorButton(currentColor[0], btnColor1, btnColor2, btnColor3, btnColor4, btnColor5, btnColorCustom);
+            currentColor[0] = "#00838F";
+            highlightColorButton(currentColor[0], btnColor1, btnColor2, btnColor3, btnColor4, btnColor5);
         });
         btnColor4.setOnClickListener(v -> {
-            currentColor[0] = "#FFB300";
-            highlightColorButton(currentColor[0], btnColor1, btnColor2, btnColor3, btnColor4, btnColor5, btnColorCustom);
+            currentColor[0] = "#3949AB";
+            highlightColorButton(currentColor[0], btnColor1, btnColor2, btnColor3, btnColor4, btnColor5);
         });
         btnColor5.setOnClickListener(v -> {
-            currentColor[0] = "#AB47BC";
-            highlightColorButton(currentColor[0], btnColor1, btnColor2, btnColor3, btnColor4, btnColor5, btnColorCustom);
+            currentColor[0] = "#5D4037";
+            highlightColorButton(currentColor[0], btnColor1, btnColor2, btnColor3, btnColor4, btnColor5);
         });
 
-        btnColorCustom.setOnClickListener(v -> showColorPickerDialog(newColor -> {
-            currentColor[0] = newColor;
-            btnColorCustom.setBackgroundTintList(ColorStateList.valueOf(Color.parseColor(newColor)));
-            highlightColorButton(currentColor[0], btnColor1, btnColor2, btnColor3, btnColor4, btnColor5, btnColorCustom);
-        }));
 
         btnStartDate.setOnClickListener(v -> showDatePicker(date -> {
             currentStartDate[0] = date;
@@ -476,18 +458,38 @@ public class DayDetailActivity extends AppCompatActivity {
     private void savePlantToUserList(int plantId, String category, String plantName) {
         new Thread(() -> {
             try {
-                UserPlant up = new UserPlant();
-                up.plant_id = plantId;
-                up.category = category;
+                // 1. Отримуємо список усіх рослин, які вже є у користувача
+                List<UserPlant> existingPlants = userDb.userDao().getMyPlants();
 
-                userDb.userDao().addUserPlant(up);
+                // 2. Перевіряємо, чи є серед них рослина з таким самим ID та категорією
+                boolean isAlreadyAdded = false;
+                for (UserPlant p : existingPlants) {
+                    if (p.plant_id == plantId && p.category.equals(category)) {
+                        isAlreadyAdded = true;
+                        break;
+                    }
+                }
 
-                runOnUiThread(() -> {
-                    Toast.makeText(this, plantName + " додано до вашого списку!", Toast.LENGTH_SHORT).show();
-                    refreshCurrentDay();
-                });
+                if (isAlreadyAdded) {
+                    // Повідомляємо, що рослина вже існує
+                    runOnUiThread(() ->
+                            Toast.makeText(this, plantName + " вже є у вашому списку!", Toast.LENGTH_SHORT).show()
+                    );
+                } else {
+                    // 3. Якщо дублікатів немає — зберігаємо
+                    UserPlant up = new UserPlant();
+                    up.plant_id = plantId;
+                    up.category = category;
+
+                    userDb.userDao().addUserPlant(up);
+
+                    runOnUiThread(() -> {
+                        Toast.makeText(this, plantName + " додано!", Toast.LENGTH_SHORT).show();
+                        refreshCurrentDay();
+                    });
+                }
             } catch (Exception e) {
-                Log.e("SAVE_ERROR", "Помилка збереження рослини: " + e.getMessage());
+                Log.e("SAVE_ERROR", "Помилка збереження: " + e.getMessage());
             }
         }).start();
     }
@@ -509,7 +511,7 @@ public class DayDetailActivity extends AppCompatActivity {
 
         final android.widget.EditText etColor = new android.widget.EditText(this);
         etColor.setHint("#RRGGBB");
-        etColor.setText("#FF5722");
+        etColor.setText("#455A64");
         etColor.setTextSize(14);
         etColor.setLayoutParams(new android.widget.LinearLayout.LayoutParams(
                 android.widget.LinearLayout.LayoutParams.MATCH_PARENT,

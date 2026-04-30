@@ -1,10 +1,18 @@
 package com.example.farmsteadcalendar.presentation;
 
 import android.content.res.ColorStateList;
+import android.graphics.Bitmap;
+import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.Paint;
+import android.graphics.RectF;
+import android.graphics.Typeface;
+import android.graphics.drawable.BitmapDrawable;
+import android.graphics.drawable.Drawable;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.View;
+import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
@@ -30,78 +38,70 @@ import com.example.farmsteadcalendar.dal.entities.Vegetable;
 import com.google.android.material.appbar.MaterialToolbar;
 import com.google.android.material.bottomsheet.BottomSheetDialog;
 import com.google.android.material.button.MaterialButton;
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
 
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Calendar;
+import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 public class MainActivity extends AppCompatActivity {
 
     private CalendarView calendarView;
     private FloatingActionButton fabAdd;
     private MaterialToolbar topAppBar;
+    private LinearLayout legendContainer;
 
-    // Дві наші бази даних
-    private DictionaryDatabase db;       // Довідник (Read-only)
-    private UserDatabase userDb;         // База користувача (Читання/Запис)
+    private Integer filterPlantId = null;
+    private String filterCategory = null;
+    private Map<String, Boolean> filterPeriodSelections = new HashMap<>();
+    private final Map<String, Drawable> drawableCache = new HashMap<>();
+
+    private final Object reloadLock = new Object();
+    private boolean isReloadInProgress = false;
+
+    private DictionaryDatabase db;
+    private UserDatabase userDb;
+
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        // Знаходимо елементи на екрані
         calendarView = findViewById(R.id.calendarView);
         fabAdd = findViewById(R.id.fabAdd);
         topAppBar = findViewById(R.id.topAppBar);
+        legendContainer = findViewById(R.id.legendContainer);
 
-        // Ініціалізація БД
         db = DictionaryDatabase.getInstance(this);
         userDb = UserDatabase.getInstance(this);
 
-        // Обробка кнопок у верхньому хедері (Про додаток / Налаштування)
-        topAppBar.setOnMenuItemClickListener(item -> {
-            int id = item.getItemId();
-            if (id == R.id.action_about) {
-                Toast.makeText(this, "Farmstead Calendar v1.0", Toast.LENGTH_SHORT).show();
-                return true;
-            } else if (id == R.id.action_settings) {
-                Toast.makeText(this, "Налаштування", Toast.LENGTH_SHORT).show();
-                return true;
-            }
-            return false;
-        });
+        buildLegend();
 
-        // Кнопка "+" внизу екрану
+
+
         fabAdd.setOnClickListener(v -> showBottomSheetMenu());
 
-        // Запуск завантаження подій у календар
-        loadCalendarData();
+        // Завантажуємо дані на весь рік
+        requestCalendarReload();
 
-        // Обробка кліку по дню на календарі
         calendarView.setOnDayClickListener(eventDay -> {
             if (eventDay != null && eventDay.getCalendar() != null) {
-                Log.d("CALENDAR_CLICK", "Day clicked: " + eventDay.getCalendar().getTime());
                 android.content.Intent intent = new android.content.Intent(MainActivity.this, DayDetailActivity.class);
                 intent.putExtra("SELECTED_DATE", eventDay.getCalendar().getTimeInMillis());
                 startActivity(intent);
             }
         });
 
-        // Довге натискання по дню відкриває редактор нотатки для конкретної дати
         calendarView.setOnCalendarDayLongClickListener((CalendarDay day) -> {
-            if (day != null && day.getCalendar() != null) {
-                SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd", Locale.getDefault());
-                String dateStr = sdf.format(day.getCalendar().getTime());
-                showNoteEditorBottomSheet(dateStr, dateStr, null);
-                return;
-            }
-
-            Calendar today = Calendar.getInstance();
-            String dateStr = new SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(today.getTime());
+            Calendar target = (day != null && day.getCalendar() != null) ? day.getCalendar() : Calendar.getInstance();
+            String dateStr = new SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(target.getTime());
             showNoteEditorBottomSheet(dateStr, dateStr, null);
         });
     }
@@ -109,512 +109,661 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onResume() {
         super.onResume();
-        // Оновлюємо крапки на календарі щоразу, коли повертаємось на головний екран
+        //requestCalendarReload();
+    }
+
+    private void requestCalendarReload() {
+        synchronized (reloadLock) {
+            if (isReloadInProgress) return;
+            isReloadInProgress = true;
+        }
         loadCalendarData();
-    }
-
-    private void showBottomSheetMenu() {
-        BottomSheetDialog bottomSheetDialog = new BottomSheetDialog(this);
-        View view = getLayoutInflater().inflate(R.layout.bottom_sheet_menu, null);
-        bottomSheetDialog.setContentView(view);
-
-        Button btnTrees = view.findViewById(R.id.btnTrees);
-        Button btnFlowers = view.findViewById(R.id.btnFlowers);
-        Button btnVegetables = view.findViewById(R.id.btnVegetables);
-        Button btnNote = view.findViewById(R.id.btnNote);
-
-        // Прив'язуємо кнопки до виклику діалогу з відповідною категорією
-        if (btnFlowers != null) {
-            btnFlowers.setOnClickListener(v -> {
-                showPlantSelectionDialog("flowers");
-                bottomSheetDialog.dismiss();
-            });
-        }
-
-        if (btnTrees != null) {
-            btnTrees.setOnClickListener(v -> {
-                showPlantSelectionDialog("trees");
-                bottomSheetDialog.dismiss();
-            });
-        }
-
-        if (btnVegetables != null) {
-            btnVegetables.setOnClickListener(v -> {
-                showPlantSelectionDialog("vegetables");
-                bottomSheetDialog.dismiss();
-            });
-        }
-
-        if (btnNote != null) {
-            btnNote.setOnClickListener(v -> {
-                Calendar today = Calendar.getInstance();
-                SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd", Locale.getDefault());
-                String dateStr = sdf.format(today.getTime());
-                showNoteEditorBottomSheet(dateStr, dateStr, null);
-                bottomSheetDialog.dismiss();
-            });
-        }
-
-        bottomSheetDialog.show();
-    }
-
-    private void showNoteEditorBottomSheet(String startDate, String endDate, Note existingNote) {
-        BottomSheetDialog bottomSheetDialog = new BottomSheetDialog(this);
-        View view = getLayoutInflater().inflate(R.layout.bottom_sheet_note_editor, null);
-        bottomSheetDialog.setContentView(view);
-
-        TextView tvTitle = view.findViewById(R.id.tvNoteTitle);
-        if (tvTitle == null) {
-            // Додаємо заголовок програмно якщо його немає
-            tvTitle = new android.widget.TextView(this);
-            tvTitle.setLayoutParams(new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ));
-            tvTitle.setTextSize(20);
-            tvTitle.setTypeface(null, android.graphics.Typeface.BOLD);
-            tvTitle.setTextColor(getResources().getColor(android.R.color.black));
-            tvTitle.setPadding(24, 24, 24, 0);
-        }
-
-        if (existingNote != null) {
-            tvTitle.setText("Редагування нотатки");
-        } else {
-            tvTitle.setText("Створення нової нотатки");
-        }
-
-        EditText etContent = view.findViewById(R.id.etNoteContent);
-        Button btnStartDate = view.findViewById(R.id.btnStartDate);
-        Button btnEndDate = view.findViewById(R.id.btnEndDate);
-        Button btnSave = view.findViewById(R.id.btnSaveNote);
-        Button btnCancel = view.findViewById(R.id.btnCancelNote);
-        Button btnDelete = view.findViewById(R.id.btnDeleteNote);
-
-        MaterialButton btnColor1 = view.findViewById(R.id.btnColor1);
-        MaterialButton btnColor2 = view.findViewById(R.id.btnColor2);
-        MaterialButton btnColor3 = view.findViewById(R.id.btnColor3);
-        MaterialButton btnColor4 = view.findViewById(R.id.btnColor4);
-        MaterialButton btnColor5 = view.findViewById(R.id.btnColor5);
-        MaterialButton btnColorCustom = view.findViewById(R.id.btnColorCustom);
-
-        final String[] currentColor = {"#FF5722"};
-
-        if (existingNote != null) {
-            etContent.setText(existingNote.content);
-            startDate = existingNote.startDate;
-            endDate = existingNote.endDate;
-            btnStartDate.setText(startDate);
-            btnEndDate.setText(endDate);
-            if (existingNote.colorHex != null) {
-                currentColor[0] = existingNote.colorHex;
-                btnColorCustom.setBackgroundTintList(ColorStateList.valueOf(Color.parseColor(existingNote.colorHex)));
-                highlightColorButton(existingNote.colorHex, btnColor1, btnColor2, btnColor3, btnColor4, btnColor5, btnColorCustom);
-            }
-        } else {
-            btnDelete.setVisibility(View.GONE);
-            highlightColorButton(currentColor[0], btnColor1, btnColor2, btnColor3, btnColor4, btnColor5, btnColorCustom);
-        }
-
-        final String[] currentStartDate = {startDate};
-        final String[] currentEndDate = {endDate};
-
-        btnColor1.setOnClickListener(v -> {
-            currentColor[0] = "#FF5722";
-            highlightColorButton(currentColor[0], btnColor1, btnColor2, btnColor3, btnColor4, btnColor5, btnColorCustom);
-        });
-        btnColor2.setOnClickListener(v -> {
-            currentColor[0] = "#1E88E5";
-            highlightColorButton(currentColor[0], btnColor1, btnColor2, btnColor3, btnColor4, btnColor5, btnColorCustom);
-        });
-        btnColor3.setOnClickListener(v -> {
-            currentColor[0] = "#43A047";
-            highlightColorButton(currentColor[0], btnColor1, btnColor2, btnColor3, btnColor4, btnColor5, btnColorCustom);
-        });
-        btnColor4.setOnClickListener(v -> {
-            currentColor[0] = "#FFB300";
-            highlightColorButton(currentColor[0], btnColor1, btnColor2, btnColor3, btnColor4, btnColor5, btnColorCustom);
-        });
-        btnColor5.setOnClickListener(v -> {
-            currentColor[0] = "#AB47BC";
-            highlightColorButton(currentColor[0], btnColor1, btnColor2, btnColor3, btnColor4, btnColor5, btnColorCustom);
-        });
-
-        btnColorCustom.setOnClickListener(v -> showColorPickerDialog(newColor -> {
-            currentColor[0] = newColor;
-            btnColorCustom.setBackgroundTintList(ColorStateList.valueOf(Color.parseColor(newColor)));
-            highlightColorButton(currentColor[0], btnColor1, btnColor2, btnColor3, btnColor4, btnColor5, btnColorCustom);
-        }));
-
-        btnStartDate.setOnClickListener(v -> showDatePicker(date -> {
-            currentStartDate[0] = date;
-            btnStartDate.setText(date);
-        }));
-
-        btnEndDate.setOnClickListener(v -> showDatePicker(date -> {
-            currentEndDate[0] = date;
-            btnEndDate.setText(date);
-        }));
-
-        btnSave.setOnClickListener(v -> {
-            String content = etContent.getText().toString().trim();
-            if (content.isEmpty()) {
-                Toast.makeText(this, "Нотатка не може бути порожньою", Toast.LENGTH_SHORT).show();
-                return;
-            }
-
-            if (existingNote != null) {
-                updateNote(existingNote.id, currentStartDate[0], currentEndDate[0], content, currentColor[0]);
-            } else {
-                saveNote(currentStartDate[0], currentEndDate[0], content, currentColor[0]);
-            }
-            bottomSheetDialog.dismiss();
-        });
-
-        btnCancel.setOnClickListener(v -> bottomSheetDialog.dismiss());
-
-        if (existingNote != null) {
-            btnDelete.setOnClickListener(v -> {
-                deleteNoteFromBottomSheet(existingNote.id, bottomSheetDialog);
-            });
-        }
-
-        bottomSheetDialog.show();
-    }
-
-    private void highlightColorButton(String color, MaterialButton... buttons) {
-        for (MaterialButton btn : buttons) {
-            btn.setStrokeWidth(0);
-            btn.setStrokeColor(null);
-            btn.setScaleX(1f);
-            btn.setScaleY(1f);
-            btn.setAlpha(0.72f);
-        }
-
-        for (MaterialButton btn : buttons) {
-            if (btn.getBackgroundTintList() == null) {
-                continue;
-            }
-
-            int btnColorInt = btn.getBackgroundTintList().getDefaultColor();
-            String btnColor = String.format(Locale.getDefault(), "#%06X", (0xFFFFFF & btnColorInt));
-            if (btnColor.equalsIgnoreCase(color)) {
-                btn.setStrokeColor(ColorStateList.valueOf(Color.parseColor("#212121")));
-                btn.setStrokeWidth(4);
-                btn.setScaleX(1.12f);
-                btn.setScaleY(1.12f);
-                btn.setAlpha(1f);
-                break;
-            }
-        }
-    }
-
-    private void showDatePicker(DatePickerCallback callback) {
-        Calendar calendar = Calendar.getInstance();
-        new android.app.DatePickerDialog(this, (view, year, month, dayOfMonth) -> {
-            String date = String.format(Locale.getDefault(), "%04d-%02d-%02d", year, month + 1, dayOfMonth);
-            callback.onDateSelected(date);
-        }, calendar.get(Calendar.YEAR), calendar.get(Calendar.MONTH), calendar.get(Calendar.DAY_OF_MONTH)).show();
-    }
-
-    private void showColorPickerDialog(DayDetailActivity.ColorPickerCallback callback) {
-        android.view.View view = new android.view.View(this);
-        android.widget.LinearLayout colorLayout = new android.widget.LinearLayout(this);
-        colorLayout.setOrientation(android.widget.LinearLayout.VERTICAL);
-        colorLayout.setPadding(24, 24, 24, 24);
-
-        // Create a color picker using EditText for hex color
-        final android.widget.EditText etColor = new android.widget.EditText(this);
-        etColor.setHint("#RRGGBB");
-        etColor.setText("#FF5722");
-        etColor.setTextSize(14);
-        etColor.setLayoutParams(new android.widget.LinearLayout.LayoutParams(
-            android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
-            android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
-        ));
-        colorLayout.addView(etColor);
-
-        new AlertDialog.Builder(this)
-            .setTitle("Виберіть колір")
-            .setView(colorLayout)
-            .setPositiveButton("OK", (dialog, which) -> {
-                String hexColor = etColor.getText().toString().trim();
-                if (hexColor.matches("#[0-9A-Fa-f]{6}")) {
-                    callback.onColorSelected(hexColor);
-                } else {
-                    Toast.makeText(this, "Невірний формат кольору. Використовуйте #RRGGBB", Toast.LENGTH_SHORT).show();
-                }
-            })
-            .setNegativeButton("Скасувати", null)
-            .show();
-    }
-
-    private void updateNote(int noteId, String startDate, String endDate, String content, String colorHex) {
-        new Thread(() -> {
-            try {
-                Note note = new Note();
-                note.id = noteId;
-                note.startDate = startDate;
-                note.endDate = endDate;
-                note.content = content;
-                note.colorHex = colorHex;
-
-                userDb.userDao().deleteNote(noteId);
-                userDb.userDao().addNote(note);
-
-                runOnUiThread(() -> {
-                    Toast.makeText(this, "Нотатка оновлена!", Toast.LENGTH_SHORT).show();
-                    loadCalendarData();
-                });
-            } catch (Exception e) {
-                Log.e("UPDATE_NOTE_ERR", "Помилка оновлення нотатки", e);
-            }
-        }).start();
-    }
-
-    private void deleteNoteFromBottomSheet(int noteId, BottomSheetDialog dialog) {
-        new Thread(() -> {
-            try {
-                userDb.userDao().deleteNote(noteId);
-                runOnUiThread(() -> {
-                    Toast.makeText(this, "Нотатка видалена", Toast.LENGTH_SHORT).show();
-                    dialog.dismiss();
-                    loadCalendarData();
-                });
-            } catch (Exception e) {
-                Log.e("DELETE_NOTE_ERR", "Помилка видалення нотатки", e);
-            }
-        }).start();
-    }
-
-    interface DatePickerCallback {
-        void onDateSelected(String date);
-    }
-
-    private void saveNote(String startDate, String endDate, String content, String colorHex) {
-        new Thread(() -> {
-            try {
-                Note note = new Note();
-                note.startDate = startDate;
-                note.endDate = endDate;
-                note.content = content;
-                note.colorHex = colorHex;
-
-                userDb.userDao().addNote(note);
-
-                runOnUiThread(() -> {
-                    Toast.makeText(this, "Нотатка додана!", Toast.LENGTH_SHORT).show();
-                    loadCalendarData();
-                });
-            } catch (Exception e) {
-                Log.e("SAVE_NOTE_ERR", "Помилка збереження нотатки", e);
-                runOnUiThread(() -> Toast.makeText(this, "Помилка при збереженні", Toast.LENGTH_SHORT).show());
-            }
-        }).start();
-    }
-
-
-    // Метод, який витягує список назв рослин з Довідника і показує діалог вибору
-    private void showPlantSelectionDialog(String category) {
-        new Thread(() -> {
-            List<String> names = new ArrayList<>();
-            List<Integer> ids = new ArrayList<>();
-
-            try {
-                // Завантажуємо дані залежно від категорії
-                if (category.equals("flowers")) {
-                    List<Flower> list = db.dictionaryDao().getAllFlowers();
-                    for (Flower f : list) { names.add(f.name); ids.add(f.id); }
-                } else if (category.equals("trees")) {
-                    List<Tree> list = db.dictionaryDao().getAllTrees();
-                    for (Tree t : list) { names.add(t.name); ids.add(t.id); }
-                } else if (category.equals("vegetables")) {
-                    List<Vegetable> list = db.dictionaryDao().getAllVegetables();
-                    for (Vegetable v : list) { names.add(v.name); ids.add(v.id); }
-                }
-
-                // Показуємо список у головному потоці
-                runOnUiThread(() -> {
-                    if (names.isEmpty()) {
-                        Toast.makeText(this, "Список порожній", Toast.LENGTH_SHORT).show();
-                        return;
-                    }
-
-                    new AlertDialog.Builder(this)
-                            .setTitle("Оберіть рослину")
-                            .setItems(names.toArray(new String[0]), (dialog, which) -> {
-                                // Коли користувач обрав рослину — зберігаємо її ID та категорію в його БД
-                                savePlantToUserList(ids.get(which), category, names.get(which));
-                            })
-                            .show();
-                });
-            } catch (Exception e) {
-                Log.e("DIALOG_ERROR", "Помилка завантаження списку: " + e.getMessage());
-            }
-        }).start();
-    }
-
-    // Збереження вибору в таблицю user_plants
-    private void savePlantToUserList(int plantId, String category, String plantName) {
-        new Thread(() -> {
-            try {
-                UserPlant up = new UserPlant();
-                up.plant_id = plantId;
-                up.category = category;
-
-                // Записуємо в базу користувача
-                userDb.userDao().addUserPlant(up);
-
-                runOnUiThread(() -> {
-                    Toast.makeText(this, plantName + " додано до вашого списку!", Toast.LENGTH_SHORT).show();
-                    // ОНОВЛЮЄМО КАЛЕНДАР ОДРАЗУ ПІСЛЯ ДОДАВАННЯ РОСЛИНИ
-                    loadCalendarData();
-                });
-            } catch (Exception e) {
-                Log.e("SAVE_ERROR", "Помилка збереження рослини: " + e.getMessage());
-            }
-        }).start();
     }
 
     private void loadCalendarData() {
         new Thread(() -> {
             try {
-                List<EventDay> events = new ArrayList<>();
-                int currentYear = Calendar.getInstance().get(Calendar.YEAR);
+                // Очищаємо кеш малюнків перед завантаженням нових даних
+                drawableCache.clear();
+
+                Map<String, List<Integer>> dateColorMap = new HashMap<>();
+                Calendar now = Calendar.getInstance();
+                int currentYear = now.get(Calendar.YEAR);
+
+                Calendar rangeStart = Calendar.getInstance();
+                rangeStart.set(currentYear, Calendar.JANUARY, 1); // Тільки цей рік
+
+                Calendar rangeEnd = Calendar.getInstance();
+                rangeEnd.set(currentYear, Calendar.DECEMBER, 31);
 
                 List<UserPlant> myPlants = userDb.userDao().getMyPlants();
 
                 for (UserPlant up : myPlants) {
-                    if ("flowers".equals(up.category)) {
-                        Flower f = db.dictionaryDao().getFlowerById(up.plant_id);
-                        if (f != null) {
-                            addEventPeriod(events, f.planting_start, f.planting_end, currentYear, R.drawable.dot_planting);
-                        }
-                    } else if ("trees".equals(up.category)) {
-                        Tree t = db.dictionaryDao().getTreeById(up.plant_id);
-                        if (t != null) {
-                            addEventPeriod(events, t.planting_start, t.planting_end, currentYear, R.drawable.dot_planting);
-                            addEventPeriod(events, t.pruning_start, t.pruning_end, currentYear, R.drawable.dot_pruning);
-                            addEventPeriod(events, t.blooming_start, t.blooming_end, currentYear, R.drawable.dot_blooming);
-                            addEventPeriod(events, t.ripening_start, t.ripening_end, currentYear, R.drawable.dot_ripening);
-                            addEventPeriod(events, t.fertilizing_start, t.fertilizing_end, currentYear, R.drawable.dot_fertilizing);
-                        }
-                    } else if ("vegetables".equals(up.category)) {
-                        Vegetable v = db.dictionaryDao().getVegetableById(up.plant_id);
-                        if (v != null) {
-                            addEventPeriod(events, v.planting_start, v.planting_end, currentYear, R.drawable.dot_planting);
-                            addEventPeriod(events, v.maturity_start, v.maturity_end, currentYear, R.drawable.dot_ripening);
-                            addEventPeriod(events, v.fertilizing_start, v.fertilizing_end, currentYear, R.drawable.dot_fertilizing);
+                    if (filterCategory != null && !filterCategory.equals(up.category)) continue;
+                    if (filterPlantId != null && up.plant_id != filterPlantId) continue;
+
+                    for (int y = currentYear; y <= currentYear; y++) {
+                        if ("flowers".equals(up.category)) {
+                            Flower f = db.dictionaryDao().getFlowerById(up.plant_id);
+                            if (f != null && shouldShowPeriod("Період садіння")) {
+                                addPeriodToColorMap(dateColorMap, f.planting_start, f.planting_end, y, Color.parseColor("#4CAF50"), rangeStart, rangeEnd);
+                            }
+                        } else if ("trees".equals(up.category)) {
+                            Tree t = db.dictionaryDao().getTreeById(up.plant_id);
+                            if (t != null) {
+                                if (shouldShowPeriod("Період садіння")) addPeriodToColorMap(dateColorMap, t.planting_start, t.planting_end, y, Color.parseColor("#4CAF50"), rangeStart, rangeEnd);
+                                if (shouldShowPeriod("Період обрізки")) addPeriodToColorMap(dateColorMap, t.pruning_start, t.pruning_end, y, Color.parseColor("#FF9800"), rangeStart, rangeEnd);
+                                if (shouldShowPeriod("Період цвітіння")) addPeriodToColorMap(dateColorMap, t.blooming_start, t.blooming_end, y, Color.parseColor("#E91E63"), rangeStart, rangeEnd);
+                                if (shouldShowPeriod("Період дозрівання")) addPeriodToColorMap(dateColorMap, t.ripening_start, t.ripening_end, y, Color.parseColor("#FFC107"), rangeStart, rangeEnd);
+                                if (shouldShowPeriod("Період удобрення")) addPeriodToColorMap(dateColorMap, t.fertilizing_start, t.fertilizing_end, y, Color.parseColor("#9C27B0"), rangeStart, rangeEnd);
+                            }
+                        } else if ("vegetables".equals(up.category)) {
+                            Vegetable v = db.dictionaryDao().getVegetableById(up.plant_id);
+                            if (v != null) {
+                                if (shouldShowPeriod("Період садіння")) addPeriodToColorMap(dateColorMap, v.planting_start, v.planting_end, y, Color.parseColor("#4CAF50"), rangeStart, rangeEnd);
+                                if (shouldShowPeriod("Період збору врожаю")) addPeriodToColorMap(dateColorMap, v.maturity_start, v.maturity_end, y, Color.parseColor("#2196F3"), rangeStart, rangeEnd);
+                                if (shouldShowPeriod("Період удобрення")) addPeriodToColorMap(dateColorMap, v.fertilizing_start, v.fertilizing_end, y, Color.parseColor("#9C27B0"), rangeStart, rangeEnd);
+                            }
                         }
                     }
                 }
 
                 List<Note> notes = userDb.userDao().getAllNotes();
                 for (Note note : notes) {
-                    addEventDateRange(events, note.startDate, note.endDate, note.colorHex);
+                    int colorInt = Color.parseColor(note.colorHex != null && !note.colorHex.trim().isEmpty() ? note.colorHex : "#455A64");
+                    addNoteToColorMap(dateColorMap, note.startDate, note.endDate, colorInt, rangeStart, rangeEnd);
+                }
+
+                List<EventDay> events = new ArrayList<>();
+                for (Map.Entry<String, List<Integer>> entry : dateColorMap.entrySet()) {
+                    Calendar cal = parseIsoDate(entry.getKey());
+                    Drawable drawable = createCompositeDrawable(entry.getValue());
+                    if (cal != null && drawable != null) {
+                        events.add(new EventDay(cal, drawable));
+                    }
                 }
 
                 runOnUiThread(() -> {
                     calendarView.setEvents(events);
+                    synchronized (reloadLock) { isReloadInProgress = false; }
                 });
 
             } catch (Exception e) {
-                Log.e("CALENDAR_LOAD", "Помилка: " + e.getMessage());
+                Log.e("CALENDAR_LOAD", "Error: " + e.getMessage());
+                synchronized (reloadLock) { isReloadInProgress = false; }
             }
         }).start();
     }
 
-    private void addEventDateRange(List<EventDay> events, String startDate, String endDate, String colorHex) {
+    private void addPeriodToColorMap(Map<String, List<Integer>> map, String startStr, String endStr, int year, int color, Calendar vStart, Calendar vEnd) {
+        if (startStr == null || endStr == null) return;
+        // Support comma-separated multiple ranges: startStr = "MM-dd,MM-dd", endStr = "MM-dd,MM-dd"
+        String[] starts = startStr.split(",");
+        String[] ends = endStr.split(",");
+
+        int pairs = Math.min(starts.length, ends.length);
+        SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd", Locale.getDefault());
+
+        for (int i = 0; i < pairs; i++) {
+            String s = starts[i].trim();
+            String e = ends[i].trim();
+            if (s.isEmpty() || e.isEmpty()) continue;
+            Calendar startCal = parseMonthDay(s, year);
+            Calendar endCal = parseMonthDay(e, year);
+            if (startCal == null || endCal == null) continue;
+
+            if (endCal.before(startCal)) endCal.add(Calendar.YEAR, 1);
+
+            Calendar curr = (Calendar) startCal.clone();
+            while (!curr.after(endCal)) {
+                if (!curr.before(vStart) && !curr.after(vEnd)) {
+                    String key = sdf.format(curr.getTime());
+                    map.computeIfAbsent(key, k -> new ArrayList<>()).add(color);
+                }
+                curr.add(Calendar.DAY_OF_MONTH, 1);
+            }
+        }
+    }
+
+    private void addNoteToColorMap(Map<String, List<Integer>> map, String startDate, String endDate, int color, Calendar vStart, Calendar vEnd) {
         Calendar start = parseIsoDate(startDate);
         Calendar end = parseIsoDate(endDate);
         if (start == null || end == null) return;
 
-        if (end.before(start)) {
-            Calendar temp = start;
-            start = end;
-            end = temp;
+        // 1. Якщо нотатка повністю поза межами нашого вікна — ігноруємо її
+        if (end.before(vStart) || start.after(vEnd)) {
+            return;
         }
 
-        Calendar current = (Calendar) start.clone();
-        while (!current.after(end)) {
-            events.add(new EventDay((Calendar) current.clone(), createTintedNoteDrawable(colorHex)));
-            current.add(Calendar.DAY_OF_MONTH, 1);
+        // 2. Якщо нотатка починається раніше вікна, починаємо малювати з початку вікна
+        Calendar actualStart = start.before(vStart) ? (Calendar) vStart.clone() : start;
+
+        // 3. Якщо нотатка закінчується пізніше вікна, закінчуємо в кінці вікна
+        Calendar actualEnd = end.after(vEnd) ? (Calendar) vEnd.clone() : end;
+
+        Calendar curr = (Calendar) actualStart.clone();
+        SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd", Locale.getDefault());
+
+        while (!curr.after(actualEnd)) {
+            String key = sdf.format(curr.getTime());
+            map.computeIfAbsent(key, k -> new ArrayList<>()).add(color);
+            curr.add(Calendar.DAY_OF_MONTH, 1);
+
+            // Додатковий захист: якщо щось пішло не так, не даємо циклу зробити більше 2000 ітерацій
+            if (map.size() > 5000) break;
         }
     }
 
-    private android.graphics.drawable.Drawable createTintedNoteDrawable(String colorHex) {
-        android.graphics.drawable.Drawable drawable = ContextCompat.getDrawable(this, R.drawable.dot_note);
-        if (drawable == null) {
-            return null;
+    private Drawable createCompositeDrawable(List<Integer> colors) {
+        if (colors == null || colors.isEmpty()) return null;
+
+        // Створюємо унікальний ключ для комбінації кольорів (наприклад, "green_orange_red")
+        List<Integer> unique = new ArrayList<>(new LinkedHashSet<>(colors));
+        StringBuilder keyBuilder = new StringBuilder();
+        for (Integer c : unique) keyBuilder.append(c).append("_");
+        String key = keyBuilder.toString();
+
+        // Якщо така іконка вже є в кеші — повертаємо її
+        if (drawableCache.containsKey(key)) {
+            return drawableCache.get(key);
         }
 
-        android.graphics.drawable.Drawable wrapped = DrawableCompat.wrap(drawable.mutate());
-        try {
-            int color = Color.parseColor(colorHex != null && !colorHex.trim().isEmpty() ? colorHex : "#1E88E5");
-            DrawableCompat.setTint(wrapped, color);
-        } catch (Exception e) {
-            DrawableCompat.setTint(wrapped, Color.parseColor("#1E88E5"));
+        int count = Math.min(unique.size(), 4);
+        int width = dpToPx(18), height = dpToPx(18);
+        int lineHeight = dpToPx(2), gap = dpToPx(2);
+        int totalH = count * lineHeight + (count - 1) * gap;
+        int top = (height - totalH) / 2;
+
+        Bitmap bmp = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+        Canvas canvas = new Canvas(bmp);
+        Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+
+        for (int i = 0; i < count; i++) {
+            paint.setColor(unique.get(i));
+            int y = top + i * (lineHeight + gap);
+            canvas.drawRoundRect(new RectF(dpToPx(2), y, width - dpToPx(2), y + lineHeight), lineHeight, lineHeight, paint);
         }
-        return wrapped;
+
+        Drawable drawable = new BitmapDrawable(getResources(), bmp);
+        drawableCache.put(key, drawable); // Зберігаємо в кеш
+        return drawable;
     }
+
 
     private Calendar parseIsoDate(String dateText) {
-        if (dateText == null || dateText.trim().isEmpty()) return null;
         try {
-            String[] parts = dateText.split("-");
-            if (parts.length != 3) return null;
-
-            int year = Integer.parseInt(parts[0].trim());
-            int month = Integer.parseInt(parts[1].trim()) - 1;
-            int day = Integer.parseInt(parts[2].trim());
-
+            String[] p = dateText.split("-");
             Calendar cal = Calendar.getInstance();
-            cal.set(year, month, day, 0, 0, 0);
+            cal.set(Integer.parseInt(p[0]), Integer.parseInt(p[1]) - 1, Integer.parseInt(p[2]), 0, 0, 0);
             cal.set(Calendar.MILLISECOND, 0);
             return cal;
-        } catch (Exception e) {
-            Log.e("PARSE_ISO_ERROR", "Не вдалося розпарсити: " + dateText, e);
-            return null;
-        }
+        } catch (Exception e) { return null; }
     }
 
-    // Заповнює крапками кожен день між початком і кінцем періоду
-    private void addEventPeriod(List<EventDay> events, String startStr, String endStr, int year, int iconRes) {
-        if (startStr == null || startStr.trim().isEmpty() || endStr == null || endStr.trim().isEmpty()) return;
-
-        Calendar startCal = parseMonthDay(startStr.trim(), year);
-        Calendar endCal = parseMonthDay(endStr.trim(), year);
-
-        if (startCal != null && endCal != null) {
-            // Якщо період переходить на наступний рік (наприклад, з листопада по лютий)
-            if (endCal.before(startCal)) {
-                endCal.add(Calendar.YEAR, 1);
-            }
-
-            Calendar current = (Calendar) startCal.clone();
-            // Цикл: додаємо крапку, поки поточний день не стане більшим за кінцевий
-            while (!current.after(endCal)) {
-                events.add(new EventDay((Calendar) current.clone(), iconRes));
-                current.add(Calendar.DAY_OF_MONTH, 1);
-            }
-        }
-    }
-
-    // Парсер для формату "09-30" (місяць-день)
     private Calendar parseMonthDay(String dateText, int year) {
         try {
-            String[] parts = dateText.split("-");
-            if (parts.length == 2) {
-                int month = Integer.parseInt(parts[0].trim()) - 1; // У Java місяці 0-11
-                int day = Integer.parseInt(parts[1].trim());
+            String[] p = dateText.split("-");
+            Calendar cal = Calendar.getInstance();
+            cal.set(year, Integer.parseInt(p[0]) - 1, Integer.parseInt(p[1]), 0, 0, 0);
+            cal.set(Calendar.MILLISECOND, 0);
+            return cal;
+        } catch (Exception e) { return null; }
+    }
 
-                Calendar cal = Calendar.getInstance();
-                cal.set(year, month, day, 0, 0, 0);
-                cal.set(Calendar.MILLISECOND, 0);
-                return cal;
+    private void showBottomSheetMenu() {
+        BottomSheetDialog dialog = new BottomSheetDialog(this);
+        View view = getLayoutInflater().inflate(R.layout.bottom_sheet_menu, null);
+        dialog.setContentView(view);
+
+        view.findViewById(R.id.btnFlowers).setOnClickListener(v -> { showPlantSelectionDialog("flowers"); dialog.dismiss(); });
+        view.findViewById(R.id.btnTrees).setOnClickListener(v -> { showPlantSelectionDialog("trees"); dialog.dismiss(); });
+        view.findViewById(R.id.btnVegetables).setOnClickListener(v -> { showPlantSelectionDialog("vegetables"); dialog.dismiss(); });
+        view.findViewById(R.id.btnNote).setOnClickListener(v -> {
+            String today = new SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(new java.util.Date());
+            showNoteEditorBottomSheet(today, today, null);
+            dialog.dismiss();
+        });
+        dialog.show();
+    }
+
+    private void showPlantSelectionDialog(String category) {
+        new Thread(() -> {
+            List<String> names = new ArrayList<>();
+            List<Integer> ids = new ArrayList<>();
+            if (category.equals("flowers")) {
+                for (Flower f : db.dictionaryDao().getAllFlowers()) { names.add(f.name); ids.add(f.id); }
+            } else if (category.equals("trees")) {
+                for (Tree t : db.dictionaryDao().getAllTrees()) { names.add(t.name); ids.add(t.id); }
+            } else if (category.equals("vegetables")) {
+                for (Vegetable v : db.dictionaryDao().getAllVegetables()) { names.add(v.name); ids.add(v.id); }
             }
-        } catch (Exception e) {
-            Log.e("PARSE_ERROR", "Не вдалося розпарсити: " + dateText);
+
+            runOnUiThread(() -> {
+                if (names.isEmpty()) return;
+                MaterialAlertDialogBuilder builder = new MaterialAlertDialogBuilder(this)
+                        .setTitle("🌿 Оберіть рослину")
+                        .setIcon(R.drawable.ic_launcher_foreground)
+                        .setItems(names.toArray(new String[0]), (d, w) -> savePlantToUserList(ids.get(w), category, names.get(w)))
+                        .setNegativeButton("Скасувати", null);
+                styleDialog(builder.show());
+            });
+        }).start();
+    }
+
+    private void savePlantToUserList(int plantId, String category, String name) {
+        new Thread(() -> {
+            try {
+                // 1. Отримуємо список усіх рослин, які вже є у користувача
+                List<UserPlant> existingPlants = userDb.userDao().getMyPlants();
+
+                // 2. Перевіряємо, чи є серед них рослина з таким самим ID та категорією
+                boolean isAlreadyAdded = false;
+                for (UserPlant p : existingPlants) {
+                    if (p.plant_id == plantId && p.category.equals(category)) {
+                        isAlreadyAdded = true;
+                        break;
+                    }
+                }
+
+                if (isAlreadyAdded) {
+                    // Повідомляємо користувача, що рослина вже є у списку
+                    runOnUiThread(() ->
+                            Toast.makeText(this, name + " вже додано раніше!", Toast.LENGTH_SHORT).show()
+                    );
+                } else {
+                    // 3. Якщо рослини немає — додаємо її
+                    UserPlant up = new UserPlant();
+                    up.plant_id = plantId;
+                    up.category = category;
+
+                    userDb.userDao().addUserPlant(up);
+
+                    runOnUiThread(() -> {
+                        Toast.makeText(this, name + " додано до вашого саду!", Toast.LENGTH_SHORT).show();
+                        requestCalendarReload();
+                    });
+                }
+            } catch (Exception e) {
+                Log.e("SAVE_ERROR", "Помилка при перевірці або збереженні: " + e.getMessage());
+                runOnUiThread(() ->
+                        Toast.makeText(this, "Помилка при збереженні", Toast.LENGTH_SHORT).show()
+                );
+            }
+        }).start();
+    }
+
+    private void buildLegend() {
+        legendContainer.removeAllViews();
+
+        // Контейнер для заголовка та кнопки
+        LinearLayout header = new LinearLayout(this);
+        header.setOrientation(LinearLayout.HORIZONTAL);
+        header.setLayoutParams(new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT));
+        header.setGravity(android.view.Gravity.CENTER_VERTICAL);
+        header.setPadding(0, 0, 0, dpToPx(8));
+
+        // Текст заголовка
+        TextView title = new TextView(this);
+        title.setText("📋 Легенда робіт:");
+        title.setTextSize(16f);
+        title.setTypeface(null, Typeface.BOLD);
+        title.setTextColor(Color.BLACK);
+        title.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+        // Кнопка фільтра
+        Button btnFilter = new Button(this, null, android.R.attr.borderlessButtonStyle);
+        btnFilter.setText("Фільтр");
+        btnFilter.setTextColor(Color.parseColor("#4CAF50")); // Зелений колір як у вас був
+        btnFilter.setOnClickListener(v -> showFilterDialog());
+
+        header.addView(title);
+        header.addView(btnFilter);
+        legendContainer.addView(header);
+
+        // Дані для елементів легенди
+        String[] actions = {"🌱 Період садіння", "✂️ Період обрізки", "🌸 Період цвітіння", "🌾 Період дозрівання", "🧪 Період удобрення", "🌽 Період збору врожаю"};
+        int[] colors = {
+                Color.parseColor("#4CAF50"), Color.parseColor("#FF9800"),
+                Color.parseColor("#E91E63"), Color.parseColor("#FFC107"),
+                Color.parseColor("#9C27B0"), Color.parseColor("#2196F3")
+        };
+
+        // Додаємо кожен рядок легенди
+        for (int i = 0; i < actions.length; i++) {
+            LinearLayout item = new LinearLayout(this);
+            item.setOrientation(LinearLayout.HORIZONTAL);
+            item.setGravity(android.view.Gravity.CENTER_VERTICAL);
+            item.setPadding(0, dpToPx(4), 0, dpToPx(4));
+            item.setLayoutParams(new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT));
+
+            // Кольоровий квадратик
+            View box = new View(this);
+            LinearLayout.LayoutParams boxParams = new LinearLayout.LayoutParams(dpToPx(14), dpToPx(14));
+            boxParams.rightMargin = dpToPx(12);
+            box.setLayoutParams(boxParams);
+            box.setBackgroundColor(colors[i]);
+
+            // Текст дії
+            TextView txt = new TextView(this);
+            txt.setText(actions[i]);
+            txt.setTextSize(14f);
+            txt.setTextColor(Color.parseColor("#212121"));
+
+            item.addView(box);
+            item.addView(txt);
+            legendContainer.addView(item);
         }
-        return null;
+    }
+
+    // Переконайтеся, що цей метод виглядає саме так
+    private int dpToPx(int dp) {
+        return (int) (dp * getResources().getDisplayMetrics().density);
+    }
+
+    private boolean shouldShowPeriod(String period) {
+        if (filterPlantId == null) return true;
+        return filterPeriodSelections.getOrDefault(period, true);
+    }
+
+    private void showFilterDialog() {
+        String[] cats = {"Усі категорії", "🌲 Дерева", "🌸 Квіти", "🌽 Овочі"};
+        MaterialAlertDialogBuilder builder = new MaterialAlertDialogBuilder(this);
+        builder.setTitle("📁 Фільтрація за категорією")
+                .setIcon(R.drawable.ic_launcher_foreground)
+                .setItems(cats, (d, w) -> {
+                    if (w == 0) { // Варіант "Усі"
+                        filterCategory = null;
+                        filterPlantId = null;
+                        filterPeriodSelections.clear();
+                        requestCalendarReload();
+                    } else {
+                        // Визначаємо ключ категорії
+                        String selectedCat = w == 1 ? "trees" : (w == 2 ? "flowers" : "vegetables");
+
+                        // Відкриваємо діалог вибору конкретної рослини з цієї категорії
+                        showPlantFilterSelection(selectedCat);
+                    }
+                })
+                .setNegativeButton("Скасувати", null);
+        styleDialog(builder.show());
+    }
+
+    private void showPlantFilterSelection(String category) {
+        new Thread(() -> {
+            try {
+                List<UserPlant> allMyPlants = userDb.userDao().getMyPlants();
+                List<UserPlant> filteredUserPlants = new ArrayList<>();
+                List<String> names = new ArrayList<>();
+
+                for (UserPlant up : allMyPlants) {
+                    if (up.category.equals(category)) {
+                        String name = "Рослина #" + up.plant_id;
+                        if (category.equals("flowers")) {
+                            Flower f = db.dictionaryDao().getFlowerById(up.plant_id);
+                            if (f != null) name = "🌸 " + f.name;
+                        } else if (category.equals("trees")) {
+                            Tree t = db.dictionaryDao().getTreeById(up.plant_id);
+                            if (t != null) name = "🌲 " + t.name;
+                        } else if (category.equals("vegetables")) {
+                            Vegetable v = db.dictionaryDao().getVegetableById(up.plant_id);
+                            if (v != null) name = "🌽 " + v.name;
+                        }
+                        names.add(name);
+                        filteredUserPlants.add(up);
+                    }
+                }
+
+                runOnUiThread(() -> {
+                    if (filteredUserPlants.isEmpty()) {
+                        Toast.makeText(this, "У вашому списку немає рослин цієї категорії", Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+
+                    names.add(0, "✓ Усі рослини");
+
+                    MaterialAlertDialogBuilder builder = new MaterialAlertDialogBuilder(this)
+                            .setTitle("🌿 Вибір рослини")
+                            .setIcon(R.drawable.ic_launcher_foreground)
+                            .setItems(names.toArray(new String[0]), (dialog, which) -> {
+                                if (which == 0) {
+                                    // Якщо обрано "Усі", просто показуємо все без вибору періодів
+                                    filterCategory = category;
+                                    filterPlantId = null;
+                                    filterPeriodSelections.clear();
+                                    requestCalendarReload();
+                                } else {
+                                    // Якщо обрана конкретна рослина — відкриваємо вибір періодів
+                                    UserPlant selected = filteredUserPlants.get(which - 1);
+                                    showPeriodSelectionDialog(selected);
+                                }
+                            })
+                            .setNegativeButton("Скасувати", null);
+                    styleDialog(builder.show());
+                });
+            } catch (Exception e) {
+                Log.e("FILTER_ERR", "Помилка: " + e.getMessage());
+            }
+        }).start();
+    }
+
+    private void showPeriodSelectionDialog(UserPlant up) {
+        new Thread(() -> {
+            List<String> periods = new ArrayList<>();
+            // Визначаємо доступні періоди залежно від категорії рослини
+            if (up.category.equals("trees")) {
+                periods.add("🌱 Період садіння");
+                periods.add("✂️ Період обрізки");
+                periods.add("🌸 Період цвітіння");
+                periods.add("🌾 Період дозрівання");
+                periods.add("🧪 Період удобрення");
+            } else if (up.category.equals("flowers")) {
+                periods.add("🌱 Період садіння");
+            } else if (up.category.equals("vegetables")) {
+                periods.add("🌱 Період садіння");
+                periods.add("🌽 Період збору врожаю");
+                periods.add("🧪 Період удобрення");
+            }
+
+            String[] items = periods.toArray(new String[0]);
+            boolean[] checked = new boolean[items.length];
+
+            // Заповнюємо стан прапорців (за замовчуванням true)
+            for (int i = 0; i < items.length; i++) {
+                checked[i] = filterPeriodSelections.getOrDefault(items[i].replaceAll("^[^\\p{L}]+ ", ""), true);
+            }
+
+            runOnUiThread(() -> {
+                MaterialAlertDialogBuilder builder = new MaterialAlertDialogBuilder(this)
+                        .setTitle("⏰ Оберіть періоди")
+                        .setIcon(R.drawable.ic_launcher_foreground)
+                        .setMultiChoiceItems(items, checked, (dialog, which, isChecked) -> {
+                            checked[which] = isChecked;
+                        })
+                        .setPositiveButton("✓ Застосувати", (dialog, which) -> {
+                            filterCategory = up.category;
+                            filterPlantId = up.plant_id;
+                            filterPeriodSelections.clear();
+                            for (int i = 0; i < items.length; i++) {
+                                String periodKey = items[i].replaceAll("^[^\\p{L}]+ ", "");
+                                filterPeriodSelections.put(periodKey, checked[i]);
+                            }
+                            requestCalendarReload();
+                        })
+                        .setNegativeButton("✕ Скасувати", null);
+                styleDialog(builder.show());
+            });
+        }).start();
+    }
+
+    private void styleDialog(androidx.appcompat.app.AlertDialog dialog) {
+        if (dialog != null) {
+            // Налаштування кольорів тексту
+            int titleId = android.R.id.title;
+            TextView title = dialog.findViewById(titleId);
+            if (title != null) {
+                title.setTextColor(ContextCompat.getColor(this, R.color.dialogTitleText));
+                title.setTextSize(18f);
+                title.setTypeface(null, android.graphics.Typeface.BOLD);
+            }
+
+            // Налаштування список (items)
+            android.widget.ListView listView = dialog.getListView();
+            if (listView != null) {
+                listView.setDividerHeight(1);
+                listView.setDivider(new android.graphics.drawable.ColorDrawable(
+                        ContextCompat.getColor(this, R.color.colorPrimary)));
+            }
+
+            // Налаштування кнопок
+            Button positiveButton = dialog.getButton(androidx.appcompat.app.AlertDialog.BUTTON_POSITIVE);
+            Button negativeButton = dialog.getButton(androidx.appcompat.app.AlertDialog.BUTTON_NEGATIVE);
+            Button neutralButton = dialog.getButton(androidx.appcompat.app.AlertDialog.BUTTON_NEUTRAL);
+
+            if (positiveButton != null) {
+                positiveButton.setTextColor(ContextCompat.getColor(this, R.color.colorPrimary));
+                positiveButton.setTypeface(null, android.graphics.Typeface.BOLD);
+            }
+            if (negativeButton != null) {
+                negativeButton.setTextColor(ContextCompat.getColor(this, R.color.colorPrimary));
+            }
+            if (neutralButton != null) {
+                neutralButton.setTextColor(ContextCompat.getColor(this, R.color.colorPrimary));
+            }
+        }
+    }
+
+    private void showNoteEditorBottomSheet(String start, String end, Note existing) {
+        BottomSheetDialog dialog = new BottomSheetDialog(this);
+        View v = getLayoutInflater().inflate(R.layout.bottom_sheet_note_editor, null);
+        dialog.setContentView(v);
+
+        // Ініціалізація елементів UI
+        TextView tvTitle = v.findViewById(R.id.tvNoteTitle);
+        EditText et = v.findViewById(R.id.etNoteContent);
+        Button btnSave = v.findViewById(R.id.btnSaveNote);
+        Button btnDelete = v.findViewById(R.id.btnDeleteNote);
+        Button btnCancel = v.findViewById(R.id.btnCancelNote);
+        Button btnStartDate = v.findViewById(R.id.btnStartDate);
+        Button btnEndDate = v.findViewById(R.id.btnEndDate);
+
+        // Використовуємо масиви для збереження стану дат всередині лямбда-виразів
+        final String[] currentStart = {existing != null ? existing.startDate : start};
+        final String[] currentEnd = {existing != null ? existing.endDate : end};
+
+        // Налаштування початкового вигляду
+        if (btnStartDate != null) btnStartDate.setText(currentStart[0]);
+        if (btnEndDate != null) btnEndDate.setText(currentEnd[0]);
+
+        if (existing == null) {
+            if (tvTitle != null) tvTitle.setText("Створення нової нотатки");
+            if (btnDelete != null) btnDelete.setVisibility(View.GONE);
+            et.setText("");
+        } else {
+            if (tvTitle != null) tvTitle.setText("Редагування нотатки");
+            if (btnDelete != null) btnDelete.setVisibility(View.VISIBLE);
+            et.setText(existing.content);
+        }
+
+        // Обробники для вибору дат
+        if (btnStartDate != null) {
+            btnStartDate.setOnClickListener(view -> showDatePicker(date -> {
+                currentStart[0] = date;
+                btnStartDate.setText(date);
+            }));
+        }
+
+        if (btnEndDate != null) {
+            btnEndDate.setOnClickListener(view -> showDatePicker(date -> {
+                currentEnd[0] = date;
+                btnEndDate.setText(date);
+            }));
+        }
+
+        // Кнопка СКАСУВАТИ
+        if (btnCancel != null) {
+            btnCancel.setOnClickListener(view -> dialog.dismiss());
+        }
+
+        // Кнопка ВИДАЛИТИ
+        if (btnDelete != null) {
+            btnDelete.setOnClickListener(view -> {
+                new Thread(() -> {
+                    if (existing != null) {
+                        userDb.userDao().deleteNote(existing.id);
+                        runOnUiThread(() -> {
+                            Toast.makeText(this, "Видалено", Toast.LENGTH_SHORT).show();
+                            requestCalendarReload();
+                            dialog.dismiss();
+                        });
+                    }
+                }).start();
+            });
+        }
+
+        // Кнопка ЗБЕРЕГТИ
+        btnSave.setOnClickListener(view -> {
+            String content = et.getText().toString().trim();
+            if (content.isEmpty()) {
+                Toast.makeText(this, "Нотатка не може бути порожньою", Toast.LENGTH_SHORT).show();
+                return;
+            }
+
+            Calendar startCal = parseIsoDate(currentStart[0]);
+            Calendar endCal = parseIsoDate(currentEnd[0]);
+
+            if (startCal != null && endCal != null) {
+                // Перевірка на логічну помилку в датах
+                if (endCal.before(startCal)) {
+                    Toast.makeText(this, "Дата завершення не може бути раніше початку!", Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                // Перевірка на занадто великий діапазон (захист продуктивності)
+                if (endCal.get(Calendar.YEAR) - startCal.get(Calendar.YEAR) > 10) {
+                    Toast.makeText(this, "Період не може перевищувати 10 років!", Toast.LENGTH_SHORT).show();
+                    return;
+                }
+            }
+
+            Note n = new Note();
+            if (existing != null) n.id = existing.id;
+            n.startDate = currentStart[0];
+            n.endDate = currentEnd[0];
+            n.content = content;
+            n.colorHex = (existing != null) ? existing.colorHex : "#455A64";
+
+            new Thread(() -> {
+                try {
+                    if (existing != null) {
+                        userDb.userDao().deleteNote(existing.id);
+                    }
+                    userDb.userDao().addNote(n);
+                    runOnUiThread(() -> {
+                        Toast.makeText(this, "Збережено", Toast.LENGTH_SHORT).show();
+                        requestCalendarReload();
+                        dialog.dismiss();
+                    });
+                } catch (Exception e) {
+                    Log.e("SAVE_NOTE_ERR", "Помилка збереження: " + e.getMessage());
+                }
+            }).start();
+        });
+
+        dialog.show();
+    }
+
+    private void showDatePicker(DatePickerCallback callback) {
+        Calendar calendar = Calendar.getInstance();
+        new android.app.DatePickerDialog(this, (dialog, year, month, dayOfMonth) -> {
+            String date = String.format(Locale.getDefault(), "%04d-%02d-%02d", year, month + 1, dayOfMonth);
+            callback.onDateSelected(date);
+        }, calendar.get(Calendar.YEAR), calendar.get(Calendar.MONTH), calendar.get(Calendar.DAY_OF_MONTH)).show();
+    }
+
+    interface DatePickerCallback {
+        void onDateSelected(String date);
     }
 }
